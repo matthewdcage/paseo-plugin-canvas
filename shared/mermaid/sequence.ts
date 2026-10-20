@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: MIT
  *
  * Adapted from dutchakdev/paseo-plugin-mermaid.
- * Source: https://github.com/dutchakdev/paseo-plugin-mermaid/blob/8e983c8108521da23ae05070f896a0057f0982f3/shared/sequence.ts
+ * Source: https://github.com/dutchakdev/paseo-plugin-mermaid/blob/fcc906e1044225f227639803b132873e3ab5b300/shared/sequence.ts
  * Local modifications: see third-party/paseo-plugin-mermaid/README.md.
  *
  * MIT License

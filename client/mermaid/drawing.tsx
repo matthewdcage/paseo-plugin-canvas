@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: MIT
  *
  * Adapted from dutchakdev/paseo-plugin-mermaid.
- * Source: https://github.com/dutchakdev/paseo-plugin-mermaid/blob/8e983c8108521da23ae05070f896a0057f0982f3/client/diagram.tsx
+ * Source: https://github.com/dutchakdev/paseo-plugin-mermaid/blob/fcc906e1044225f227639803b132873e3ab5b300/client/diagram.tsx
  * Local modifications: see third-party/paseo-plugin-mermaid/README.md.
  *
  * MIT License
@@ -32,13 +32,13 @@ import { Text, View } from "react-native";
 import type { PluginTheme } from "@getpaseo/plugin";
 import type { NodeShape } from "../../shared/mermaid/flowchart";
 import {
-  layoutFlowchart,
   layoutSequence,
   measureEdgeLabel,
+  type FlowLayout,
   type LaidOutNode,
   type LaidOutEdge,
 } from "../../shared/mermaid/layout";
-import { parseSequence, type SeqEvent } from "../../shared/mermaid/sequence";
+import type { SeqEvent, SequenceDiagram } from "../../shared/mermaid/sequence";
 const ARROW = 5;
 function radiusFor(shape: NodeShape, node: LaidOutNode): number {
   if (shape === "circle") return node.width / 2;
@@ -51,7 +51,7 @@ export function FlowchartView({
   layout,
   theme,
 }: {
-  layout: ReturnType<typeof layoutFlowchart>;
+  layout: FlowLayout;
   theme: PluginTheme;
 }) {
   return (
@@ -252,7 +252,7 @@ export function SequenceView({
   diagram,
   theme,
 }: {
-  diagram: NonNullable<ReturnType<typeof parseSequence>>;
+  diagram: SequenceDiagram;
   theme: PluginTheme;
 }) {
   const layout = layoutSequence(
