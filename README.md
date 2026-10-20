@@ -126,14 +126,17 @@ Open **Settings → Plugins → paseo-canvas**, or choose **Canvas settings** fr
 | --- | --- |
 | Markdown | Headings, lists, quotes, links, tables, strikethrough, code blocks, and read-only task lists. |
 | GitHub-style extras | Note and warning alerts, footnotes, emoji shortcodes, and heading links. |
-| Images | HTTP/HTTPS images and workspace-relative PNG, JPEG, GIF, and WebP files. Local images must be at most 5 MB; symlinks and paths outside the workspace are rejected. |
+| Images | HTTP/HTTPS images and workspace-relative PNG, JPEG, GIF, WebP, and SVG files. Local images must be at most 5 MB; symlinks and paths outside the workspace are rejected. |
+| SVG | Workspace and HTTP/HTTPS `.svg` images, and SVG written in a ` ```svg ` code block, on desktop and mobile. |
 | Mathematics | Inline and block TeX formulas. |
 | Mermaid diagrams | A subset of flowcharts and sequence diagrams, with zoom, pan, and expanded views. |
 | Embedded HTML | Collapsible `details`/`summary`, line breaks, subscript, and superscript. Other raw HTML appears as text; scripts do not run. |
 
 **Full Mermaid syntax is not supported.** Use one declaration or connection per line. Subgraphs, styling directives, and sequence blocks such as `loop` and `alt` are unsupported. If a diagram cannot render, Canvas shows its source and an explanation; agent saves also return feedback to help correct it.
 
-Standalone HTML documents and syntax highlighting in Code view are not supported. External images load from their original hosts when viewed.
+**SVG is shown as a static picture.** Apart from external SVGs that the desktop app can draw itself, the daemon host converts SVG to an image, so it does not stay sharp when enlarged. Scripts, animation, `foreignObject`, and files the SVG references are ignored. Text uses the bundled Noto Sans JP font whatever font the SVG names. Transparent areas show the Canvas background, so dark lines can be hard to see in a dark theme. An SVG that takes more than 10 seconds to draw is not shown.
+
+Standalone HTML documents and syntax highlighting in Code view are not supported. External images load from their original hosts when viewed. When the viewing device cannot draw an external image, it downloads the file once more and, if it is an SVG, sends it to the daemon host to be converted.
 
 ## Where your documents are saved
 

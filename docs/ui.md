@@ -56,6 +56,10 @@ Paseo本体の [docs/design.md](https://github.com/getpaseo/paseo/blob/f22a37e61
 
 ライブラリ選定: react-native-markdown-displayは保守終了、後継enriched-markdownはホスト側へのネイティブモジュール導入が必要。react-markdownはDOM向けで、単独ではiOS/Androidの表示に使えない。このためremarkを解析に採用し、表示は公開SDK・helper・React Nativeで実装する。MermaidはMITライセンスの `paseo-plugin-mermaid` から取り込んだパーサーと配置処理を使い、React NativeのViewとTextで描画する。対応範囲はフローチャート・シーケンス図の一部に限り、未対応記法を含む図は理由と原文を表示する。数式はサーバー側のMathJaxとresvg WASMでPNG化する。描画にChromium・WebView・追加ネイティブモジュールは必要ない。
 
+SVGはワークスペース内のファイル、` ```svg ` のコードブロック、外部URLの画像の3経路で表示する。React NativeのImageはiOS/AndroidでSVGを描けないため、デーモンが数式と同じresvg WASMでPNG化し、表示サイズを添えて返す。クライアントは返されたサイズを本文幅に合わせて縮小し、`Image.getSize` で測り直さない。外部URLはまずImageで直接読み込み、失敗した場合だけ閲覧中の端末がSVGとして取得し直してデーモンに送る。デーモン自身は外部URLへ接続しない。Electron／Webで直接描けたSVGはベクターのまま表示する。コードブロックのSVGは数式と同じく **Show source** で原文を確認できる。透過部分は本文の背景をそのまま見せ、テーマに合わせた背景は敷かない。
+
+レビュー対象の各ブロックは枠線2pxと余白8pxを左右に持つ。画像・図・数式に渡す幅はこの分を差し引き、レビュー表示で本文からはみ出さないようにする。
+
 ## 図の操作と両プラットフォーム対応
 
 Mermaidの縮小・拡大・全体を収める・ポップアップ・コードを表示にはhelperのButtonとホストIconを使う。`size="sm"` を使い、狭い領域では操作列を折り返す。スマホ向けの押下領域はhelperに任せる。操作は図の上部に集め、「コードを表示」は右寄せにする。SDK Modalは外枠の幅を指定できないため、図とコードのポップアップはReact Native標準Modalを使い、安全領域の内側に12pxの余白を取る。iOS/Webは標準SafeAreaView、AndroidはModalのシステムバーを透過しない設定で表示領域を確保する。図は操作列を除く残りの高さを使い、コードも本文領域の高さまでスクロールできる。閉じるボタン・Androidの戻る・WebのEscで閉じる。

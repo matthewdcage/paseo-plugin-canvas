@@ -921,8 +921,24 @@ test.each(["web", "ios", "android"] as const)(
       height: 120,
     });
     expect(tree.root.findByType(Image).props.onLoad).toBeUndefined();
-    await act(async () => tree.root.findByType(Image).props.onError());
-    expect(JSON.stringify(tree.toJSON())).toContain("Unable to display image");
+    // A failed remote image is retried as SVG before the error is shown.
+    const fetch = vi.fn(async (_url: string) => {
+      throw new Error("offline");
+    });
+    vi.stubGlobal("fetch", fetch);
+    try {
+      await act(async () => tree.root.findByType(Image).props.onError());
+      await act(async () => {});
+      expect(fetch).toHaveBeenCalledWith(
+        "https://example.com/two.png",
+        expect.anything(),
+      );
+      expect(JSON.stringify(tree.toJSON())).toContain(
+        "Unable to display image",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
     await act(async () =>
       tree.root.findByProps({ accessibilityRole: "button" }).props.onPress(),
     );
@@ -934,6 +950,163 @@ test.each(["web", "ios", "android"] as const)(
     await act(async () => tree.unmount());
   },
 );
+
+test.each(["ios", "android", "web"] as const)(
+  "remote SVG on %s that the image view cannot draw is fetched by the device and rasterized by the daemon",
+  async (platform) => {
+    nativePlatform.OS = platform;
+    const { Image } = await import("react-native");
+    const { DocumentImage } = await import("../client/media");
+    vi.mocked(Image.getSize).mockImplementation((_uri, _success, failure) =>
+      failure?.(new Error("unsupported image")),
+    );
+    const source =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"/>';
+    const fetch = vi.fn(async (url: string) =>
+      url.endsWith("badge.svg")
+        ? new Response(source, { headers: { "content-type": "text/plain" } })
+        : url.endsWith("photo.png")
+          ? new Response(source, { headers: { "content-type": "image/png" } })
+          : new Response("<html></html>"),
+    );
+    vi.stubGlobal("fetch", fetch);
+    reviewCalls.mockImplementation(async (name, input) =>
+      name === "canvas.render_graphic"
+        ? { uri: "data:image/png;base64,UE5H", width: 480, height: 240 }
+        : undefined,
+    );
+    const render = (src: string) => (
+      <PluginThemeProvider theme={theme}>
+        <DocumentImage src={src} alt="バッジ" theme={theme} width={240} />
+      </PluginThemeProvider>
+    );
+    let tree!: ReactTestRenderer;
+    try {
+      await act(async () => {
+        tree = create(render("https://example.com/badge.svg"));
+      });
+      await act(async () => {});
+      expect(reviewCalls).toHaveBeenCalledWith("canvas.render_graphic", {
+        kind: "svg",
+        source,
+      });
+      const image = tree.root.findByType(Image);
+      expect(image.props.source.uri).toBe("data:image/png;base64,UE5H");
+      expect(image.props.style).toEqual({ width: 240, height: 120 });
+      // The rasterized size is known, so the PNG is not measured again.
+      expect(Image.getSize).toHaveBeenCalledTimes(1);
+
+      for (const src of [
+        "https://example.com/page",
+        "https://example.com/photo.png",
+      ]) {
+        await act(async () => {
+          tree.update(render(src));
+        });
+        await act(async () => {});
+        expect(JSON.stringify(tree.toJSON())).toContain(
+          "Unable to display image",
+        );
+      }
+      expect(fetch).toHaveBeenCalledTimes(3);
+      expect(
+        reviewCalls.mock.calls.filter(
+          ([name]) => name === "canvas.render_graphic",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      reviewCalls.mockImplementation(async () => undefined);
+      vi.unstubAllGlobals();
+      await act(async () => tree?.unmount());
+    }
+  },
+);
+
+test("workspace SVGs and SVG fences use the daemon's rasterized size and keep their source", async () => {
+  const { Image } = await import("react-native");
+  const { DocumentImage } = await import("../client/media");
+  const saved = { ...mediaResult };
+  Object.assign(mediaResult, {
+    data: { uri: "data:image/png;base64,UE5H", width: 1200, height: 300 },
+    error: null,
+  });
+  let tree!: ReactTestRenderer;
+  try {
+    await act(async () => {
+      tree = create(
+        <PluginThemeProvider theme={theme}>
+          <DocumentImage
+            src="docs/diagram.svg"
+            alt="構成図"
+            theme={theme}
+            width={240}
+            workspaceId="workspace-a"
+          />
+        </PluginThemeProvider>,
+      );
+    });
+    expect(Image.getSize).not.toHaveBeenCalled();
+    expect(tree.root.findByType(Image).props.style).toEqual({
+      width: 240,
+      height: 60,
+    });
+    await act(async () => tree.unmount());
+
+    const fence =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300"/>';
+    await act(async () => {
+      tree = create(
+        <PluginThemeProvider theme={theme}>
+          <Markdown
+            document={parseDocument(`\`\`\`svg\n${fence}\n\`\`\`\n`)}
+            theme={theme}
+            onError={() => {}}
+          />
+        </PluginThemeProvider>,
+      );
+    });
+    expect(queries.inputs).toHaveBeenCalledWith("canvas.render_graphic", {
+      kind: "svg",
+      source: fence,
+    });
+    expect(tree.root.findAllByType(CodeBlock)).toHaveLength(0);
+    const image = tree.root.findByProps({ accessibilityLabel: "SVG image" });
+    expect(image.props.style).toEqual({ width: 600, height: 150 });
+    await act(async () => button(tree, "Show source").props.onPress());
+    expect(tree.root.findByType(CodeBlock).props).toMatchObject({
+      code: fence,
+      language: "xml",
+    });
+    await act(async () => tree.unmount());
+
+    // Review targets add a 2px border and 8px padding on each side.
+    await act(async () => {
+      tree = create(
+        <PluginThemeProvider theme={theme}>
+          <Markdown
+            document={parseDocument(`\`\`\`svg\n${fence}\n\`\`\`\n`)}
+            theme={theme}
+            onError={() => {}}
+            review={{
+              enabled: true,
+              register: () => {},
+              navigate: null,
+              navigationRequest: 0,
+              text: (value) => value,
+              wrap: (_node, child) => child,
+            }}
+          />
+        </PluginThemeProvider>,
+      );
+    });
+    expect(
+      tree.root.findByProps({ accessibilityLabel: "SVG image" }).props.style,
+    ).toEqual({ width: 580, height: 145 });
+  } finally {
+    Object.assign(mediaResult, saved);
+    await act(async () => tree?.unmount());
+  }
+});
 
 test.each(["web", "ios", "android"] as const)(
   "Mermaid popup on %s fills measured space, switches to complete source and closes",

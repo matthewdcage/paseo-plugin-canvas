@@ -253,6 +253,23 @@ try {
         process.send({ type: "graphic-error", message: error.stack });
       }
     }
+    if (message === "svg") {
+      try {
+        const image = await handlers.get("canvas.render_graphic")({
+          kind: "svg",
+          source:
+            '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><rect width="120" height="40" fill="#336699"/></svg>',
+        });
+        process.send({
+          type: "svg",
+          width: image.width,
+          height: image.height,
+          png: image.uri.startsWith("data:image/png;base64,"),
+        });
+      } catch (error) {
+        process.send({ type: "svg-error", message: error.stack });
+      }
+    }
     if (message === "get") {
       const result = await handlers.get("canvas.get")({
         workspaceId: "bundle-workspace",

@@ -37,7 +37,12 @@ import {
 } from "../shared/review-targets";
 import { Markdown } from "./markdown";
 import { ToolbarButton, metaText, titleText } from "./controls";
-import { sourceRange, type ReviewBindings } from "./review-bindings";
+import {
+  sourceRange,
+  targetBorder,
+  targetPadding,
+  type ReviewBindings,
+} from "./review-bindings";
 import {
   CommentEditor,
   ReviewKeyboard,
@@ -367,7 +372,7 @@ export function ReviewDocument({
           }
           aria-checked={selecting ? selected : undefined}
           style={{
-            borderWidth: 2,
+            borderWidth: targetBorder,
             borderRadius: 6,
             borderColor:
               selected || ids.includes(active ?? "")
@@ -376,7 +381,7 @@ export function ReviewDocument({
                   ? colors.border
                   : "transparent",
             backgroundColor: selected ? colors.surface2 : undefined,
-            padding: 8,
+            padding: targetPadding,
           }}
         >
           <View

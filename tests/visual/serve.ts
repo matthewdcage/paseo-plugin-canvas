@@ -57,7 +57,7 @@ const server = createServer(async (req, res) => {
       else if (name === "canvas.render_graphic")
         result = await graphics.render(input);
       else if (name === "canvas.read_image")
-        result = await workspaceImage(root, input.src);
+        result = await workspaceImage(root, input.src, graphics);
       else if (name === "canvas.list")
         result = await store.list(input.workspaceId);
       else if (name === "canvas.get") {

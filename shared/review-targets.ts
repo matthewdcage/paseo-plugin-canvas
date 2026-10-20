@@ -35,6 +35,8 @@ export function targetLabel(node: Element) {
     const classes = code?.properties.className;
     if (Array.isArray(classes) && classes.includes("language-mermaid"))
       return "diagram";
+    if (Array.isArray(classes) && classes.includes("language-svg"))
+      return "image";
     return "code block";
   }
   if (node.tagName === "p") {

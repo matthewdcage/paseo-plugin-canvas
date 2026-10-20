@@ -8,7 +8,12 @@ import { textContent, externalLink, type AlertType } from "../shared/document";
 import { DocumentImage, Graphic } from "./media";
 import { Mermaid } from "./mermaid/viewer";
 import { useLinkOpener } from "./links";
-import { type ReviewBindings, sourceRange } from "./review-bindings";
+import {
+  type ReviewBindings,
+  sourceRange,
+  targetBorder,
+  targetPadding,
+} from "./review-bindings";
 import { reviewTargets } from "../shared/review-targets";
 import { tableColumnWidths } from "../shared/table";
 
@@ -49,6 +54,10 @@ export function Markdown({
   const openExternal = useLinkOpener();
   const anchors = useRef(new Map<string, View | Text>());
   const [width, setWidth] = useState(600);
+  // Review targets draw a border and padding around each top-level block.
+  const contentWidth = review
+    ? Math.max(0, width - 2 * (targetBorder + targetPadding))
+    : width;
   const [expanded, setExpanded] = useState(new Map<Element, boolean>());
   const [pending, setPending] = useState<string>();
   const colors = theme.colors;
@@ -169,7 +178,7 @@ export function Markdown({
       <Graphic
         key={key}
         theme={theme}
-        width={width}
+        width={contentWidth}
         inline={!display}
         input={{
           kind: "math",
@@ -296,7 +305,7 @@ export function Markdown({
               src={String(node.properties.src ?? "")}
               alt={String(node.properties.alt ?? "")}
               theme={theme}
-              width={width}
+              width={contentWidth}
               workspaceId={workspaceId}
             />
           );
@@ -381,7 +390,7 @@ export function Markdown({
               src={String(img.properties.src ?? "")}
               alt={String(img.properties.alt ?? "")}
               theme={theme}
-              width={width}
+              width={contentWidth}
               workspaceId={workspaceId}
             />
           );
@@ -404,11 +413,20 @@ export function Markdown({
               key={key}
               source={textContent(code).trim()}
               theme={theme}
-              width={width}
+              width={contentWidth}
             />
           );
         if (language === "math" || classes(code).includes("math-display"))
           return graphic(code, true, key);
+        if (language === "svg")
+          return (
+            <Graphic
+              key={key}
+              theme={theme}
+              width={contentWidth}
+              input={{ kind: "svg", source: textContent(code).trim() }}
+            />
+          );
         if (review)
           return (
             <View
