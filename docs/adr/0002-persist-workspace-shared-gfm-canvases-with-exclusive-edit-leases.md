@@ -14,6 +14,8 @@ links:
   kind: amendedby
 - target: 13
   kind: amendedby
+- target: 15
+  kind: amendedby
 ---
 
 # Persist workspace-shared GFM canvases with exclusive edit leases

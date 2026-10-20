@@ -6,9 +6,8 @@ import type { ReviewStore } from "./reviews";
 import { CanvasError } from "./errors";
 type Paseo = PluginHandlerContext["paseo"];
 // Derived from the host SDK: npm installations omit @getpaseo/client (ADR 14).
-type PaseoAgent = Awaited<
-  ReturnType<Paseo["agents"]["list"]>
->["entries"][number]["agent"];
+type PaseoAgentPage = Awaited<ReturnType<Paseo["agents"]["list"]>>;
+type PaseoAgent = PaseoAgentPage["entries"][number]["agent"];
 async function availableAgents(
   sessions: Sessions,
   paseo: Paseo,
@@ -17,7 +16,7 @@ async function availableAgents(
   const agents = new Map<string, PaseoAgent>();
   let cursor: string | null = null;
   do {
-    const page = await paseo.agents.list({
+    const page: PaseoAgentPage = await paseo.agents.list({
       filter: { includeArchived: false },
       sort: [{ key: "created_at", direction: "asc" }],
       page: { limit: 200, ...(cursor ? { cursor } : {}) },

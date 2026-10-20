@@ -1,4 +1,9 @@
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { Pressable, Text, View } from "react-native";
 import {
   Icon,
@@ -8,7 +13,10 @@ import {
   useToast,
 } from "@getpaseo/plugin/client/react-native";
 import type { PluginTheme } from "@getpaseo/plugin";
-import type { PluginWorkspacePanelProps } from "@getpaseo/plugin/client";
+import {
+  useSettings,
+  type PluginWorkspacePanelProps,
+} from "@getpaseo/plugin/client";
 import {
   Badge,
   EmptyState,
@@ -30,6 +38,8 @@ import { createCanvasSelection, type CanvasSelection } from "./selection";
 import { useCanvasEditor, CanvasEditForm, EditConfirmation } from "./editor";
 import { ReviewDocument } from "./review";
 import { HEADER_HEIGHT, ToolbarButton, titleText, metaText } from "./controls";
+import { createLinkOpener, LinkOpenerProvider } from "./links";
+import { canvasSettings, defaultCanvasSettings } from "../shared/settings";
 
 // Paseo docs/design.md and styles/theme.ts: use the public theme colors and the
 // authored interface scale. The SDK does not expose live typography/spacing tokens.
@@ -49,9 +59,29 @@ function lockLabel(state: EditState) {
 }
 
 export function CanvasPanel(
-  props: PluginWorkspacePanelProps & { selection?: CanvasSelection },
+  props: PluginWorkspacePanelProps & {
+    selection?: CanvasSelection;
+    /** Opens the canvas in the full-page screen; omitted inside that screen. */
+    onOpenScreen?: (canvasId: string) => void;
+  },
 ) {
   const [localSelection] = useState(createCanvasSelection);
+  const settings = useSettings(canvasSettings);
+  const preference =
+    settings.status === "ready"
+      ? settings.values.openLinksIn
+      : defaultCanvasSettings.openLinksIn;
+  const openBrowser = props.navigation?.openBrowser;
+  const openLink = useMemo(
+    () =>
+      createLinkOpener({
+        preference,
+        openBrowser,
+        workspaceId: props.workspaceId,
+        serverId: props.host.id,
+      }),
+    [preference, openBrowser, props.workspaceId, props.host.id],
+  );
   const [width, setWidth] = useState<number | null>(null);
   // A split workspace pane can be narrower than the host's form factor. Keep
   // the canonical 320 + 400 list/detail topology only where it actually fits.
@@ -71,12 +101,14 @@ export function CanvasPanel(
         theme={props.theme}
         layout={{ ...props.layout, compact: singlePane }}
       >
-        <WorkspaceCanvas
-          key={props.workspaceId}
-          {...props}
-          selection={props.selection ?? localSelection}
-          singlePane={singlePane}
-        />
+        <LinkOpenerProvider value={openLink}>
+          <WorkspaceCanvas
+            key={props.workspaceId}
+            {...props}
+            selection={props.selection ?? localSelection}
+            singlePane={singlePane}
+          />
+        </LinkOpenerProvider>
       </PluginThemeProvider>
     </View>
   );
@@ -88,9 +120,11 @@ function WorkspaceCanvas({
   layout,
   singlePane,
   selection,
+  onOpenScreen,
 }: PluginWorkspacePanelProps & {
   singlePane: boolean;
   selection: CanvasSelection;
+  onOpenScreen?: (canvasId: string) => void;
 }) {
   const colors = theme.colors;
   const { editor, state: edit } = useCanvasEditor(workspaceId, selection);
@@ -276,6 +310,7 @@ function WorkspaceCanvas({
                 busy={edit.busy}
                 onEdit={() => void editor.begin(canvasId)}
                 onDelete={(canvas) => editor.requestDelete(canvas)}
+                onOpenScreen={onOpenScreen}
                 theme={theme}
                 platform={layout.platform}
                 navigation={navigation}
@@ -307,18 +342,21 @@ function WorkspaceCanvas({
   );
 }
 
-function CanvasRow({
+export function CanvasRow({
   title,
   state,
   active,
   theme,
   onPress,
+  workspaceName,
 }: {
   title: string;
   state: EditState;
   active: boolean;
   theme: PluginTheme;
   onPress: () => void;
+  /** Shown where a list spans several workspaces. */
+  workspaceName?: string;
 }) {
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -365,7 +403,9 @@ function CanvasRow({
           numberOfLines={1}
           style={{ ...metaText, color: theme.colors.foregroundMuted }}
         >
-          {lockLabel(state)}
+          {workspaceName
+            ? `${workspaceName} · ${lockLabel(state)}`
+            : lockLabel(state)}
         </Text>
       </View>
       <Icon
@@ -387,6 +427,7 @@ function CanvasDetail({
   navigationSide,
   onEdit,
   onDelete,
+  onOpenScreen,
   busy,
 }: {
   workspaceId: string;
@@ -398,6 +439,7 @@ function CanvasDetail({
   navigationSide: "left" | "right";
   onEdit: () => void;
   onDelete: (canvas: Canvas) => void;
+  onOpenScreen?: (canvasId: string) => void;
   busy: boolean;
 }) {
   const colors = theme.colors;
@@ -481,6 +523,13 @@ function CanvasDetail({
             )}
           </View>
         </View>
+        {onOpenScreen && (
+          <ToolbarButton
+            icon="Maximize2"
+            accessibilityLabel="Open in full screen"
+            onPress={() => onOpenScreen(canvasId)}
+          />
+        )}
         <ToolbarButton
           icon="Info"
           label="Details"

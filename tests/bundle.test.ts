@@ -167,9 +167,10 @@ test("Paseo compiler bundles both entries; server bundle starts, injects MCP and
       child.send("sync-activity");
       const [activity] = await activityReply;
       expect(activity.type).toBe("activity");
-      // Stock 0.8.0 does not wire a durable store for appended plugin rows.
-      // Pending plugin notifications survive restart; already delivered rows
-      // are owned by Paseo and disappear when its in-memory timeline is lost.
+      // Stock Paseo (checked through 0.12.0) does not wire a durable store for
+      // appended plugin rows. Pending plugin notifications survive restart;
+      // already delivered rows are owned by Paseo and disappear when its
+      // in-memory timeline is lost.
       if (crash) {
         expect(activity.items).toEqual([]);
         continue;
@@ -188,6 +189,23 @@ test("Paseo compiler bundles both entries; server bundle starts, injects MCP and
         },
       });
     }
+    const locked = await client.callTool({
+      name: "lock.acquire",
+      arguments: { canvasId: created.canvasId },
+    });
+    expect(locked.isError, JSON.stringify(locked)).not.toBe(true);
+    const editState = async () => {
+      const reply = once(child, "message");
+      child.send("list");
+      const [list] = await reply;
+      return list.result.items[0].editState.status;
+    };
+    expect(await editState()).toBe("locked");
+    const closed = once(child, "message");
+    child.send("close-agent");
+    expect((await closed)[0]).toMatchObject({ type: "closed" });
+    // Lifecycle events are delivered asynchronously after the runtime closes.
+    await expect.poll(editState, { timeout: 5_000 }).toBe("unlocked");
   } finally {
     await client.close();
     if (child.exitCode === null && child.signalCode === null) {

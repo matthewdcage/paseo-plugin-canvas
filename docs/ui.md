@@ -21,9 +21,9 @@ Paseo本体の [docs/design.md](https://github.com/getpaseo/paseo/blob/f22a37e61
 
 ## 公開APIによる制約
 
-確認したPlugin SDK 0.8.0の `PluginTheme` が公開するのは11色のみ。本体の文字サイズ・余白・フォント、`surfaceSidebar` / `surface3` / `interactionHighlight` は公開されていない。このため本体の「Interface size」「Code size」を動的に追従することはできない。色は公開テーマに追従し、寸法は本体の既定値を参照する。
+確認したPlugin SDK 0.12.0でも、`PluginTheme` が公開するのは11色のみ。本体の文字サイズ・余白・フォント、`surfaceSidebar` / `surface3` / `interactionHighlight` は公開されていない。このため本体の「Interface size」「Code size」を動的に追従することはできない。色は公開テーマに追従し、寸法は本体の既定値を参照する。
 
-本体の `Button`、`SegmentedControl`、`StatusBadge`、`LoadingSpinner`、`Alert`、`BackHeader`、`MarkdownRenderer` も公開されていない。一般操作はhelperで共通化し、標準SDKの `Icon` / `Modal` / `ScrollView` / `useToast` / `copyText` を利用する。helper beta.7のTabsやEmptyStateなど、公開propsで調整できない文字・形状・操作フィードバックの差は残る。SDKが将来これらを公開した時点で、公開された部品・トークンに移行する。非公開APIへの依存やhelper内部へのスタイル上書きは追加しない。
+本体の `Button`、`SegmentedControl`、`StatusBadge`、`LoadingSpinner`、`Alert`、`BackHeader`、`MarkdownRenderer` も公開されていない。一般操作はhelperで共通化し、標準SDKの `Icon` / `Modal` / `ScrollView` / `useToast` / `copyText` を利用する。0.9以降で公開された設定画面用の `Settings*` と `ExternalLink`、0.11以降で公開されたサイドバー用の `SidebarRow` は、該当する画面でそのまま使う。helper beta.7のTabsやEmptyStateなど、公開propsで調整できない文字・形状・操作フィードバックの差は残る。SDKが将来これらを公開した時点で、公開された部品・トークンに移行する。非公開APIへの依存やhelper内部へのスタイル上書きは追加しない。
 
 参照元:
 
@@ -82,4 +82,17 @@ UIは一覧を取得してから、削除されていない表示中の詳細を
 
 ロックはアプリがアクティブな間に1分ごとに更新する。更新失敗では入力を保持して保存を止める。**Reacquire lock** は保存済みリビジョンが同じ場合だけ入力を保って再開し、異なる場合はコピーしてキャンセルし、最新内容を読むよう案内する。成否不明の保存では再送を止め、**Check latest canvases** で読み取りのみ再実行する。自動更新で編集中の本文を置き換えない。
 
-Cancelや別Canvasへの移動では未保存の変更の破棄を確認し、破棄時は保存せず解除する。閉じる・切断などホスト側の操作にはSDK 0.8.0の事前確認APIがないため、アンマウント時に解除を試み、送信できなければ期限切れを待つ。**Delete** は閲覧画面でタイトルとレビューも完全削除される旨を確認する。別の編集者がロックを保持している場合はEditとDeleteを無効にし、サーバーでも競合を拒否する。ロック所有者と最終保存者はUserまたはエージェント名・IDとして表示する。
+Cancelや別Canvasへの移動では未保存の変更の破棄を確認し、破棄時は保存せず解除する。閉じる・切断などホスト側の操作にはSDK 0.12.0にも事前確認APIがないため、アンマウント時に解除を試み、送信できなければ期限切れを待つ。エージェントのロックは、そのエージェントのランタイムが閉じた時点（`agent.closed`）とアーカイブ時にサーバーが解除する。再開したエージェントには新しい編集セッションが割り当てられ、古いロックトークンは使えないため、期限切れを待つ理由がない。**Delete** は閲覧画面でタイトルとレビューも完全削除される旨を確認する。別の編集者がロックを保持している場合はEditとDeleteを無効にし、サーバーでも競合を拒否する。ロック所有者と最終保存者はUserまたはエージェント名・IDとして表示する。
+
+## サイドバーと全画面表示
+
+サイドバー上部に **Canvas** の項目を1つ置く。押すとワークスペースをまたいだ最近更新されたCanvas（最大10件）をポップオーバーで表示する。広い画面では行に添えて、コンパクト画面ではボトムシートで表示する配置はホストに任せる。各行はパネルの一覧行と同じ部品を使い、補足にワークスペース名とロック状態を並べる。一覧はアクティブなワークスペースだけを対象にし、アーカイブ済みのワークスペースのCanvasは出さない。
+
+行を選ぶと全画面表示を開く。全画面表示は `{ workspaceId, canvasId }` を画面パラメーターとして持ち、再読み込みや戻る・進むでも同じCanvasを開く。中身はワークスペースパネルと同じ一覧・本文コンポーネントで、選択状態と編集状態はパネルとは別に持つ。パネルの裏で同じワークスペースの編集が進んでいても互いの確認ダイアログを奪わないためである。上部の帯にワークスペース名と **Open workspace** を置き、ホストが接続中またはオフラインのときはその旨を警告色で示す。ワークスペースパネルの本文ヘッダーには **Open in full screen** を置き、全画面表示では表示しない。
+
+## 設定
+
+設定は **Settings → Plugins → paseo-canvas** と、Command Centerの **Canvas settings** から開く。ホスト単位の設定で、同じホストのすべてのクライアントに共通する。各項目は変更した時点で保存し、保存中は操作を無効にする。設定が読めない場合は既定値で動作し、画面には再読み込みまたは既定値へのリセットを示す。
+
+- **Canvas notifications**: エージェントの保存時にタイムライン行を追加するかどうか。既定はオン。オフの場合、MCPの保存結果は `timeline: "disabled"` を返す。
+- **Open web links in**: 文書内のHTTP(S)リンクを開く先。既定の **Workspace browser** は、Electronアプリではワークスペースのブラウザータブで開き、`navigation.openBrowser` がないWebブラウザー版やiOS/Androidでは外部ブラウザーで開く。**System browser** は常に外部で開く。`mailto:` は常にOSの処理に渡す。開けない場合は本文内にエラーを表示する。

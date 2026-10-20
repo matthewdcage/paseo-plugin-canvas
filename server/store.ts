@@ -430,6 +430,27 @@ export class CanvasStore {
       return { editState: { status: "unlocked" as const } };
     });
   }
+  /** Releases every lease of an agent whose runtime closed. A reopened agent
+   * receives a new edit session, so its old tokens could never be used again. */
+  async releaseAgent(agentId: string) {
+    const owned = (lock: Lock | undefined) =>
+      !!lock && !("role" in lock.actor) && lock.actor.agentId === agentId;
+    const keys = [...this.locks]
+      .filter(([, lock]) => owned(lock))
+      .map(([key]) => key);
+    const released = await Promise.all(
+      keys.map((key) =>
+        this.serial(key, async () => {
+          if (!owned(this.locks.get(key))) return false;
+          this.locks.delete(key);
+          this.scheduleExpiry();
+          this.changed(key);
+          return true;
+        }),
+      ),
+    );
+    return released.filter(Boolean).length;
+  }
   async update(
     actor: EditActor,
     input: {

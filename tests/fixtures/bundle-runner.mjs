@@ -21,6 +21,17 @@ const cleanupPlugin = module.default({
   handle(contract, handler) {
     handlers.set(contract.name, handler);
   },
+  // A stored document is absent, so Paseo serves the schema defaults.
+  registerSettings(definition) {
+    return {
+      read: async () => ({
+        status: "ready",
+        revision: "0",
+        values: definition.schema.parse({}),
+      }),
+      subscribe: () => () => {},
+    };
+  },
 });
 const logger = pino({ level: "silent" });
 const registry = new AgentStorage(`${process.argv[2]}.agents`, logger);
@@ -250,6 +261,11 @@ try {
         ).items[0].canvasId,
       });
       process.send({ type: "document", document: result.document });
+    }
+    if (message === "close-agent") {
+      // The stock AgentManager emits agent.closed through pluginLifecycle.
+      await manager.closeAgent(agent.id);
+      process.send({ type: "closed" });
     }
     if (message === "stop") {
       await cleanup();
