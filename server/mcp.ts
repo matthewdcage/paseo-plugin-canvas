@@ -20,6 +20,7 @@ export async function startMcp(
   store: CanvasStore,
   sessions: Sessions,
   activity: Pick<CanvasActivityQueue, "enqueue">,
+  options: { timelineNotifications?: () => Promise<boolean> } = {},
 ) {
   const pending = new Set<Promise<unknown>>();
   let closing = false;
@@ -40,17 +41,20 @@ export async function startMcp(
           "Canvas saved, but rendering diagnostics could not be completed.",
       });
     }
-    let timeline: "queued" | "failed" = "queued";
+    let timeline: "queued" | "disabled" | "failed" = "queued";
     try {
-      await activity.enqueue(actor.agentId, {
-        workspaceId: actor.workspaceId,
-        canvasId: value.canvasId,
-        title: value.snapshot.metadata.title,
-        revision: value.revision,
-        action,
-        warningCount: diagnosis?.diagnosticCount ?? 0,
-        savedAt: value.snapshot.metadata.updatedAt,
-      });
+      const notify = (await options.timelineNotifications?.()) ?? true;
+      if (notify)
+        await activity.enqueue(actor.agentId, {
+          workspaceId: actor.workspaceId,
+          canvasId: value.canvasId,
+          title: value.snapshot.metadata.title,
+          revision: value.revision,
+          action,
+          warningCount: diagnosis?.diagnosticCount ?? 0,
+          savedAt: value.snapshot.metadata.updatedAt,
+        });
+      else timeline = "disabled";
     } catch (error) {
       timeline = "failed";
       console.error(
@@ -115,7 +119,7 @@ export async function startMcp(
       { name: "paseo-canvas", version: "0.1.0" },
       {
         instructions:
-          "Shared GFM documents in your Paseo workspace. Use canvas.list/get to read. Before update/delete acquire a lock, use its lockToken and the current expectedRevision. Locks last five minutes; renew before expiry and release after editing. On conflict, read again. Canvas files are outside the project. Never write them directly. Create/update return rendering diagnostics with document line numbers and repair hints. Fix unsupported Mermaid using canvas.update and the returned revision. saved:true means the write succeeded even when warnings are present; do not repeat canvas.create. A dedicated timeline row lets users open the canvas inside Paseo.",
+          "Shared GFM documents in your Paseo workspace. Use canvas.list/get to read. Before update/delete acquire a lock, use its lockToken and the current expectedRevision. Locks last five minutes; renew before expiry and release after editing. On conflict, read again. Canvas files are outside the project. Never write them directly. Create/update return rendering diagnostics with document line numbers and repair hints. Fix unsupported Mermaid using canvas.update and the returned revision. saved:true means the write succeeded even when warnings are present; do not repeat canvas.create. Unless the user turned timeline notifications off, a dedicated timeline row lets users open the canvas inside Paseo.",
       },
     );
     const transport = new StreamableHTTPServerTransport({

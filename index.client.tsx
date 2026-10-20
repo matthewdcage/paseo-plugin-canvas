@@ -12,6 +12,13 @@ import { initClientHelpers } from "paseo-plugin-helper/client";
 import { registerNativeCanvasHeaders } from "./client/header";
 import { CanvasPanel } from "./client/panel";
 import { CanvasActivityRow, startActivitySync } from "./client/activity";
+import {
+  CANVAS_SCREEN,
+  CanvasScreen,
+  canvasScreenParams,
+} from "./client/screen";
+import { CanvasSidebarItem } from "./client/sidebar";
+import { CanvasSettingsScreen, SETTINGS_SCREEN } from "./client/settings";
 import { createCanvasSelection } from "./client/selection";
 import { canvasActivitySchema } from "./shared/activity";
 export default function contribute(client: PluginClientContext) {
@@ -46,7 +53,43 @@ export default function contribute(client: PluginClientContext) {
     title: "Canvas",
     icon: "NotebookPen",
     context: "workspace",
-    Component: (props) => <CanvasPanel {...props} selection={selection} />,
+    Component: (props) => (
+      <CanvasPanel
+        {...props}
+        selection={selection}
+        onOpenScreen={(canvasId) =>
+          client.openScreen({
+            screenId: CANVAS_SCREEN,
+            params: canvasScreenParams(props.workspaceId, canvasId),
+          })
+        }
+      />
+    ),
+  });
+  const removeScreen = client.addScreen({
+    id: CANVAS_SCREEN,
+    title: "Canvas",
+    Component: CanvasScreen,
+  });
+  const removeSidebarItem = client.addSidebarHeaderItem({
+    id: "canvas",
+    title: "Canvas",
+    Component: CanvasSidebarItem,
+  });
+  const removeSettings = client.addSettingsScreen({
+    id: SETTINGS_SCREEN,
+    title: "Canvas",
+    icon: "NotebookPen",
+    Component: CanvasSettingsScreen,
+  });
+  const removeSettingsCommand = client.addCommandCenterItem({
+    id: "canvas-settings",
+    title: "Canvas settings",
+    icon: "Settings",
+    context: "global",
+    onSelect({ openSettings }) {
+      openSettings(SETTINGS_SCREEN);
+    },
   });
   const removeCommand = client.addCommandCenterItem({
     id: "open-canvas",
@@ -63,6 +106,10 @@ export default function contribute(client: PluginClientContext) {
     stopActivitySync();
     removeActivity();
     removeCommand();
+    removeSettingsCommand();
+    removeSettings();
+    removeSidebarItem();
+    removeScreen();
     removePanel();
   };
 }

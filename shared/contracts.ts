@@ -57,6 +57,16 @@ export const listCanvases = defineContract({
   input: z.object({ workspaceId: idSchema }),
   output: listResultSchema,
 });
+export const recentCanvasSchema = canvasSummarySchema.extend({
+  workspaceName: z.string(),
+});
+export type RecentCanvas = z.infer<typeof recentCanvasSchema>;
+// Most recently updated canvases across the host's active workspaces.
+export const recentCanvases = defineContract({
+  name: "canvas.recent",
+  input: z.object({ limit: z.number().int().min(1).max(50) }),
+  output: z.object({ items: z.array(recentCanvasSchema) }),
+});
 export const getCanvas = defineContract({
   name: "canvas.get",
   input: z.object({ workspaceId: idSchema, canvasId: idSchema }),

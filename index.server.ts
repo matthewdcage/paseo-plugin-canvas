@@ -3,13 +3,17 @@ import { createPluginLogger } from "paseo-plugin-helper/server";
 import {
   getCanvas,
   listCanvases,
+  recentCanvases,
   waitForCanvasChange,
 } from "./shared/contracts";
+import { canvasSettings } from "./shared/settings";
 import { CanvasStore } from "./server/store";
 import { storageDirectory } from "./server/paths";
 import { Sessions } from "./server/sessions";
 import { startMcp } from "./server/mcp";
 import { CanvasActivityQueue } from "./server/activity";
+import { watchCanvasSettings } from "./server/settings";
+import { recentCanvases as listRecentCanvases } from "./server/recent";
 import { syncCanvasActivity } from "./shared/activity";
 
 import { parseDocument } from "./server/document";
@@ -34,6 +38,9 @@ import { registerUserEditing } from "./server/user-editing";
 const REGISTRATION_ENV = "PASEO_CANVAS_REGISTRATION";
 export default function contribute(server: PluginServerContext) {
   const logger = createPluginLogger("paseo-canvas", { version: "0.1.0" });
+  const settings = watchCanvasSettings(
+    server.registerSettings(canvasSettings),
+  );
   const graphics = new GraphicsRenderer();
   server.handle(renderGraphic, (input) => graphics.render(input));
   server.handle(readImage, async ({ workspaceId, src }, { paseo }) => {
@@ -49,7 +56,10 @@ export default function contribute(server: PluginServerContext) {
     try {
       sessions = await Sessions.open(store);
       activity = await CanvasActivityQueue.open(directory);
-      const mcp = await startMcp(store, sessions, activity);
+      const mcp = await startMcp(store, sessions, activity, {
+        timelineNotifications: async () =>
+          (await settings.current()).timelineNotifications,
+      });
       logger.info("Canvas storage and MCP are ready");
       return { store, mcp, sessions, activity };
     } catch (error) {
@@ -66,6 +76,9 @@ export default function contribute(server: PluginServerContext) {
   registerUserEditing(server, async () => (await ready).store);
   server.handle(listCanvases, async ({ workspaceId }) =>
     (await ready).store.list(workspaceId),
+  );
+  server.handle(recentCanvases, async ({ limit }, { paseo }) =>
+    listRecentCanvases((await ready).store, paseo, limit),
   );
   server.handle(syncCanvasActivity, async ({ cursor }, context) =>
     (await ready).activity.sync(cursor, context),
@@ -134,10 +147,17 @@ export default function contribute(server: PluginServerContext) {
   server.on("agent.turn_started", async ({ agent }) =>
     (await ready).sessions.title(agent.id, agent.title),
   );
-  server.on("agent.archived", async ({ agent }) =>
-    (await ready).sessions.revoke(agent.id),
-  );
+  // Another editor need not wait for the lease to expire once the agent stops.
+  server.on("agent.closed", async ({ agent }) => {
+    await (await ready).store.releaseAgent(agent.id);
+  });
+  server.on("agent.archived", async ({ agent }) => {
+    const { sessions, store } = await ready;
+    await sessions.revoke(agent.id);
+    await store.releaseAgent(agent.id);
+  });
   return async () => {
+    settings.close();
     await graphics.close();
     const runtime = await ready.catch(() => null);
     if (runtime) {

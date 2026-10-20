@@ -206,3 +206,36 @@ test("resolves OS application-data locations", () => {
     dataRoot("win32", { LOCALAPPDATA: "C:\\Users\\test\\AppData\\Local" }),
   ).toBe("C:\\Users\\test\\AppData\\Local\\paseo-canvas");
 });
+test("closing an agent releases only that agent's leases and publishes the change", async () => {
+  const { store } = await setup();
+  const first = await store.create(a, "First", "# First");
+  const second = await store.create(a, "Second", "# Second");
+  const other = await store.create(b, "Other", "# Other");
+  const userCanvas = await store.createUser("workspace-a", "User", "# User");
+  await store.acquire(a, first.canvasId);
+  await store.acquire(a, second.canvasId);
+  await store.acquire(b, other.canvasId);
+  const user = await store.beginUserEdit("workspace-a", userCanvas.canvasId);
+  const { cursor } = await store.waitForChange("workspace-a", null);
+  const changed = store.waitForChange("workspace-a", cursor);
+  expect(await store.releaseAgent("agent-a")).toBe(2);
+  expect((await changed).cursor).not.toBe(cursor);
+  const states = Object.fromEntries(
+    (await store.list("workspace-a")).items.map((item) => [
+      item.title,
+      item.editState.status,
+    ]),
+  );
+  expect(states).toEqual({
+    First: "unlocked",
+    Second: "unlocked",
+    Other: "locked",
+    User: "locked",
+  });
+  // The released canvas is immediately available to another editor.
+  await expect(store.acquire(b, first.canvasId)).resolves.toMatchObject({
+    editState: { status: "locked" },
+  });
+  expect(user.lockToken).toBeTruthy();
+  expect(await store.releaseAgent("agent-a")).toBe(0);
+});

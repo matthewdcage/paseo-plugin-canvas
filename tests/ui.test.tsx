@@ -1,15 +1,32 @@
 import React from "react";
-import { act, create, type ReactTestRenderer } from "react-test-renderer";
+import {
+  act,
+  create,
+  type ReactTestInstance,
+  type ReactTestRenderer,
+} from "react-test-renderer";
 import { beforeEach, expect, test, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { CanvasStore } from "../server/store";
 import { Modal as SdkModal } from "@getpaseo/plugin/client/react-native";
-vi.mock("@getpaseo/plugin/client/ui", () => ({
-  SettingsSelect: (props: object) =>
-    React.createElement("SettingsSelect", props),
-}));
+import { Linking } from "react-native";
+vi.mock("@getpaseo/plugin/client/ui", () => {
+  const host = (name: string) => (props: object) =>
+    React.createElement(name, props);
+  return Object.fromEntries(
+    [
+      "SettingsSelect",
+      "SettingsSwitch",
+      "SettingsSection",
+      "SettingsCard",
+      "SettingsAction",
+      "ExternalLink",
+      "SidebarRow",
+    ].map((name) => [name, host(name)]),
+  );
+});
 vi.mock("@tanstack/react-query", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-query")>()),
   useQueryClient: () => ({ setQueryData: () => {} }),
@@ -23,9 +40,32 @@ const lifecycle = vi.hoisted(() => ({
   listener: undefined as ((state: string) => void) | undefined,
   remove: vi.fn(),
 }));
+const sdk = vi.hoisted(() => ({
+  settings: {} as Record<string, unknown>,
+  save: vi.fn(async (_values: unknown, _revision: string) => true),
+  openExternalUrl: vi.fn(async (_url: string) => {}),
+  hosts: [] as { serverId: string; label: string; status: string }[],
+  workspace: null as { name: string; title: string | null } | null,
+}));
 vi.mock("@getpaseo/plugin/client", () => ({
   useRpc: (contract: { name: string }) => async (input: unknown) =>
     reviewCalls(contract.name, input),
+  useSettings: () => ({
+    status: "ready",
+    values: sdk.settings,
+    revision: "revision-1",
+    saving: false,
+    saveError: null,
+    save: sdk.save,
+    reset: async () => true,
+    reload: async () => {},
+  }),
+  openExternalUrl: sdk.openExternalUrl,
+  useHosts: () => sdk.hosts,
+  useWorkspace: (
+    _workspaceId: string,
+    selector: (workspace: { name: string; title: string | null }) => unknown,
+  ) => (sdk.workspace ? selector(sdk.workspace) : null),
 }));
 vi.mock("react-native", () => ({
   AppState: {
@@ -105,6 +145,11 @@ const queries = vi.hoisted(() => ({
     isFetching: false,
     refetch: vi.fn(),
   },
+  recent: {
+    data: { items: [] as unknown[] } as { items: unknown[] } | undefined,
+    error: null as Error | null,
+    failureReason: null as Error | null,
+  },
 }));
 const mediaResult = vi.hoisted(() => ({
   data: undefined,
@@ -124,6 +169,7 @@ vi.mock("paseo-plugin-helper/client", async (importOriginal) => ({
         refetch: queries.reviewRefetch,
         isFetching: false,
       };
+    if (contract.name === "canvas.recent") return queries.recent;
     return contract.name === "canvas.list"
       ? queries.list
       : contract.name === "canvas.get"
@@ -223,6 +269,14 @@ const summary = {
 beforeEach(() => {
   vi.clearAllMocks();
   nativePlatform.OS = "web";
+  sdk.settings = {
+    timelineNotifications: true,
+    openLinksIn: "workspace-browser",
+  };
+  sdk.hosts = [{ serverId: "host", label: "Host", status: "online" }];
+  sdk.workspace = { name: "workspace-a", title: "Workspace A" };
+  queries.recent.data = { items: [] };
+  queries.recent.error = queries.recent.failureReason = null;
   queries.review = undefined;
   queries.recipients.data = [];
   queries.recipients.error = null;
@@ -1073,13 +1127,21 @@ test.each([false, true])(
   "timeline action selects an unmounted or mounted panel in its workspace (compact=%s)",
   async (compact) => {
     const renderers: any[] = [],
-      panels: any[] = [];
+      panels: any[] = [],
+      screens: any[] = [],
+      sidebarItems: any[] = [],
+      settingsScreens: any[] = [],
+      commands: any[] = [];
     const removeRenderer = vi.fn(),
       removePanel = vi.fn(),
-      removeCommand = vi.fn();
+      removeCommand = vi.fn(),
+      removeScreen = vi.fn(),
+      removeSidebarItem = vi.fn(),
+      removeSettings = vi.fn();
     const client = {
       rpc: vi.fn(() => new Promise(() => {})),
       openPanel: vi.fn(),
+      openScreen: vi.fn(),
       addTimelineRenderer: (entry: any) => {
         renderers.push(entry);
         return removeRenderer;
@@ -1088,7 +1150,22 @@ test.each([false, true])(
         panels.push(entry);
         return removePanel;
       },
-      addCommandCenterItem: () => removeCommand,
+      addCommandCenterItem: (entry: any) => {
+        commands.push(entry);
+        return removeCommand;
+      },
+      addScreen: (entry: any) => {
+        screens.push(entry);
+        return removeScreen;
+      },
+      addSidebarHeaderItem: (entry: any) => {
+        sidebarItems.push(entry);
+        return removeSidebarItem;
+      },
+      addSettingsScreen: (entry: any) => {
+        settingsScreens.push(entry);
+        return removeSettings;
+      },
     };
     const cleanup = contribute(client as unknown as PluginClientContext);
     const Row = renderers[0].Component,
@@ -1141,6 +1218,13 @@ test.each([false, true])(
         canvasId: "canvas-b",
       });
       expect(view.root.findAllByType(Tabs)).toHaveLength(1);
+      await act(async () =>
+        button(view, "Open in full screen").props.onPress(),
+      );
+      expect(client.openScreen).toHaveBeenLastCalledWith({
+        screenId: "canvas",
+        params: { workspaceId: "workspace-a", canvasId: "canvas-b" },
+      });
       await act(async () => timeline.update(row("workspace-a", "canvas-a")));
       queries.inputs.mockClear();
       await act(async () => button(timeline, "Open canvas").props.onPress());
@@ -1171,9 +1255,20 @@ test.each([false, true])(
         cleanup();
       });
     }
+    expect(screens).toMatchObject([{ id: "canvas", title: "Canvas" }]);
+    expect(sidebarItems).toMatchObject([{ id: "canvas", title: "Canvas" }]);
+    expect(settingsScreens).toMatchObject([{ id: "canvas", title: "Canvas" }]);
+    const openSettings = vi.fn();
+    commands
+      .find((command) => command.id === "canvas-settings")
+      .onSelect({ openSettings });
+    expect(openSettings).toHaveBeenCalledWith("canvas");
     expect(removeRenderer).toHaveBeenCalledOnce();
     expect(removePanel).toHaveBeenCalledOnce();
-    expect(removeCommand).toHaveBeenCalledOnce();
+    expect(removeCommand).toHaveBeenCalledTimes(commands.length);
+    expect(removeScreen).toHaveBeenCalledOnce();
+    expect(removeSidebarItem).toHaveBeenCalledOnce();
+    expect(removeSettings).toHaveBeenCalledOnce();
   },
 );
 
@@ -2147,4 +2242,240 @@ test("canvas editing refreshes a lease on foreground and releases it on unmount"
   expect(reviewCalls.mock.calls.some(([name]) => name === "canvas.user.renew")).toBe(true);
   await act(async () => view.unmount());
   expect(reviewCalls.mock.calls.some(([name, input]) => name === "canvas.user.cancel" && (input as { lockToken: string }).lockToken === "secret")).toBe(true);
+});
+
+const textOf = (node: ReactTestInstance): string =>
+  node.children
+    .map((child) => (typeof child === "string" ? child : textOf(child)))
+    .join("");
+const hostCommon = {
+  theme,
+  host: { id: "host", label: "Host" },
+  layout: { compact: false, platform: "web" as const },
+};
+
+test("document links follow the link setting and the client's browser support", async () => {
+  const content =
+    "[Docs](https://example.com/docs) and [Mail](mailto:team@example.com)";
+  queries.detail.data = {
+    canvas: { ...summary, content },
+    document: parseDocument(content),
+  };
+  const openBrowser = vi.fn();
+  const render = (navigation?: object) => (
+    <CanvasPanel
+      {...hostCommon}
+      context="workspace"
+      workspaceId="workspace-a"
+      navigation={navigation as never}
+    />
+  );
+  const link = (label: string) =>
+    view.root.findAll(
+      (node) =>
+        node.type === ("Text" as never) &&
+        node.props.accessibilityRole === "link" &&
+        textOf(node) === label,
+    )[0];
+  let view!: ReactTestRenderer;
+  await act(async () => {
+    view = create(render({ openBrowser, openAgent: vi.fn() }));
+  });
+  await act(async () => link("Docs").props.onPress());
+  expect(openBrowser).toHaveBeenCalledWith({
+    url: "https://example.com/docs",
+    workspaceId: "workspace-a",
+    serverId: "host",
+  });
+  await act(async () => link("Mail").props.onPress());
+  expect(Linking.openURL).toHaveBeenCalledWith("mailto:team@example.com");
+  expect(sdk.openExternalUrl).not.toHaveBeenCalled();
+
+  sdk.settings = { ...sdk.settings, openLinksIn: "system" };
+  await act(async () => view.update(render({ openBrowser })));
+  await act(async () => link("Docs").props.onPress());
+  expect(sdk.openExternalUrl).toHaveBeenCalledWith("https://example.com/docs");
+  expect(openBrowser).toHaveBeenCalledOnce();
+
+  // Browser web and mobile clients have no workspace browser.
+  sdk.settings = { ...sdk.settings, openLinksIn: "workspace-browser" };
+  await act(async () => view.update(render(undefined)));
+  await act(async () => link("Docs").props.onPress());
+  expect(sdk.openExternalUrl).toHaveBeenCalledTimes(2);
+
+  openBrowser.mockImplementation(() => {
+    throw new Error("Workspace is unavailable on the requested host.");
+  });
+  await act(async () => view.update(render({ openBrowser })));
+  await act(async () => link("Docs").props.onPress());
+  expect(JSON.stringify(view.toJSON())).toContain("Unable to open the link");
+  await act(async () => view.unmount());
+});
+
+test("the full-page screen opens its params' canvas with workspace and host context", async () => {
+  const { CanvasScreen } = await import("../client/screen");
+  const openWorkspace = vi.fn();
+  const render = (params: Record<string, string>) => (
+    <CanvasScreen
+      {...hostCommon}
+      params={params}
+      navigation={{ openWorkspace, openAgent: vi.fn() }}
+    />
+  );
+  const output = () => JSON.stringify(view.toJSON());
+  const labels = () =>
+    view.root
+      .findAllByType(Button)
+      .map((item) => item.props.accessibilityLabel ?? item.props.label);
+  let view!: ReactTestRenderer;
+  await act(async () => {
+    view = create(render({ workspaceId: "workspace-a", canvasId: "canvas-b" }));
+  });
+  expect(queries.inputs).toHaveBeenCalledWith("canvas.get", {
+    workspaceId: "workspace-a",
+    canvasId: "canvas-b",
+  });
+  expect(output()).toContain("Workspace A");
+  expect(labels()).not.toContain("Open in full screen");
+  await act(async () => button(view, "Open workspace").props.onPress());
+  expect(openWorkspace).toHaveBeenCalledWith({
+    workspaceId: "workspace-a",
+    serverId: "host",
+  });
+
+  queries.inputs.mockClear();
+  await act(async () =>
+    view.update(render({ workspaceId: "workspace-a", canvasId: "canvas-a" })),
+  );
+  expect(queries.inputs).toHaveBeenCalledWith("canvas.get", {
+    workspaceId: "workspace-a",
+    canvasId: "canvas-a",
+  });
+
+  sdk.hosts = [{ serverId: "host", label: "Host", status: "offline" }];
+  sdk.workspace = null;
+  await act(async () =>
+    view.update(render({ workspaceId: "workspace-a", canvasId: "canvas-a" })),
+  );
+  expect(output()).toContain(
+    "Host is offline. Canvas changes appear after it reconnects.",
+  );
+  expect(output()).toContain("Workspace unavailable");
+  expect(labels()).not.toContain("Open workspace");
+
+  await act(async () => view.update(render({ workspaceId: "../escape" })));
+  expect(output()).toContain("No workspace selected");
+  await act(async () => view.unmount());
+});
+
+test("the sidebar row lists recent canvases across workspaces and opens one full page", async () => {
+  const { CanvasSidebarItem, RecentCanvasesPopover } = await import(
+    "../client/sidebar"
+  );
+  const openPopover = vi.fn();
+  const item = (screenId: string | null) => (
+    <CanvasSidebarItem
+      {...hostCommon}
+      currentScreen={screenId ? { screenId, params: {} } : null}
+      openScreen={vi.fn()}
+      openPopover={openPopover}
+    />
+  );
+  let sidebar!: ReactTestRenderer;
+  await act(async () => {
+    sidebar = create(item(null));
+  });
+  const row = () => sidebar.root.findByType("SidebarRow" as never);
+  expect(row().props).toMatchObject({ icon: "NotebookPen", active: false });
+  row().props.onPress();
+  expect(openPopover).toHaveBeenCalledWith(RecentCanvasesPopover);
+  await act(async () => sidebar.update(item("canvas")));
+  expect(row().props.active).toBe(true);
+
+  queries.recent.data = {
+    items: [
+      { ...summary, workspaceName: "Workspace A" },
+      {
+        ...summary,
+        workspaceId: "workspace-b",
+        canvasId: "canvas-c",
+        title: "Notes",
+        editState: { status: "unlocked" },
+        workspaceName: "Workspace B",
+      },
+    ],
+  };
+  const openScreen = vi.fn();
+  const popover = () => (
+    <RecentCanvasesPopover
+      {...hostCommon}
+      close={vi.fn()}
+      openScreen={openScreen}
+    />
+  );
+  let view!: ReactTestRenderer;
+  await act(async () => {
+    view = create(popover());
+  });
+  expect(queries.inputs).toHaveBeenCalledWith("canvas.recent", { limit: 10 });
+  expect(JSON.stringify(view.toJSON())).toContain(
+    "Workspace A · Being edited by Agent A",
+  );
+  expect(JSON.stringify(view.toJSON())).toContain("Workspace B · Unlocked");
+  await act(async () =>
+    view.root
+      .findAll(
+        (node) =>
+          node.type === ("Pressable" as never) &&
+          node.props.accessibilityLabel === "Open Notes",
+      )[0]
+      .props.onPress(),
+  );
+  expect(openScreen).toHaveBeenCalledWith({
+    screenId: "canvas",
+    params: { workspaceId: "workspace-b", canvasId: "canvas-c" },
+  });
+
+  queries.recent.data = { items: [] };
+  await act(async () => view.update(popover()));
+  expect(JSON.stringify(view.toJSON())).toContain("No canvases yet");
+  queries.recent.data = undefined;
+  queries.recent.error = new Error("Canvas store is closed");
+  await act(async () => view.update(popover()));
+  expect(JSON.stringify(view.toJSON())).toContain(
+    "Unable to load canvases: Canvas store is closed",
+  );
+  sdk.hosts = [{ serverId: "host", label: "Host", status: "connecting" }];
+  await act(async () => view.update(popover()));
+  expect(JSON.stringify(view.toJSON())).toContain("Connecting to Host…");
+  await act(async () => {
+    view.unmount();
+    sidebar.unmount();
+  });
+});
+
+test("the settings screen saves each preference immediately and links to the documentation", async () => {
+  const { CanvasSettingsScreen } = await import("../client/settings");
+  let view!: ReactTestRenderer;
+  await act(async () => {
+    view = create(<CanvasSettingsScreen {...hostCommon} />);
+  });
+  const toggle = view.root.findByType("SettingsSwitch" as never);
+  expect(toggle.props.value).toBe(true);
+  await act(async () => toggle.props.onValueChange(false));
+  expect(sdk.save).toHaveBeenLastCalledWith(
+    { timelineNotifications: false, openLinksIn: "workspace-browser" },
+    "revision-1",
+  );
+  const select = view.root.findByType("SettingsSelect" as never);
+  expect(select.props.value).toBe("workspace-browser");
+  await act(async () => select.props.onValueChange("system"));
+  expect(sdk.save).toHaveBeenLastCalledWith(
+    { timelineNotifications: true, openLinksIn: "system" },
+    "revision-1",
+  );
+  expect(view.root.findByType("ExternalLink" as never).props.href).toBe(
+    "https://github.com/supermomonga/paseo-plugin-canvas#readme",
+  );
+  await act(async () => view.unmount());
 });

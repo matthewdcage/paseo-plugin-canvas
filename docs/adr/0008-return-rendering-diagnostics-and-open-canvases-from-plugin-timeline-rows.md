@@ -8,6 +8,8 @@ links:
   kind: RelatesTo
 - target: 6
   kind: RelatesTo
+- target: 15
+  kind: amendedby
 ---
 
 # Return rendering diagnostics and open canvases from plugin timeline rows

@@ -217,3 +217,49 @@ test("real HTTP MCP: scoped A/B sharing, locks, third workspace isolation and cr
     ).status,
   ).toBe(401);
 });
+test("turning timeline notifications off still saves and reports the disabled notification", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "canvas-mcp-"));
+  cleanup.push(() => rm(dir, { recursive: true, force: true }));
+  const store = await CanvasStore.open(dir);
+  cleanup.push(() => store.close());
+  const activity = await CanvasActivityQueue.open(dir);
+  cleanup.push(() => activity.close());
+  const enqueue = vi.spyOn(activity, "enqueue");
+  let notify = false;
+  const sessions = await Sessions.open(store),
+    mcp = await startMcp(store, sessions, activity, {
+      timelineNotifications: async () => notify,
+    });
+  cleanup.push(() => sessions.close());
+  cleanup.push(() => mcp.close());
+  const token = sessions.register();
+  await sessions.activate("agent-a", "workspace-a", token);
+  const client = new Client({ name: "agent-a", version: "1.0.0" });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(mcp.url), {
+      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+    }),
+  );
+  cleanup.push(() => client.close());
+  const create = async (title: string) =>
+    JSON.parse(
+      (
+        (
+          await client.callTool({
+            name: "canvas.create",
+            arguments: { title, content: "# Plan" },
+          })
+        ).content as { text: string }[]
+      )[0].text,
+    );
+  expect(await create("Quiet")).toMatchObject({
+    saved: true,
+    timeline: "disabled",
+    warnings: [],
+  });
+  expect(enqueue).not.toHaveBeenCalled();
+  notify = true;
+  expect(await create("Announced")).toMatchObject({ timeline: "queued" });
+  expect(enqueue).toHaveBeenCalledOnce();
+  expect((await store.list("workspace-a")).items).toHaveLength(2);
+});

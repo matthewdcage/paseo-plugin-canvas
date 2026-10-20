@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Linking, Platform, Text, View, type TextStyle } from "react-native";
+import { Platform, Text, View, type TextStyle } from "react-native";
 import { Icon, ScrollView } from "@getpaseo/plugin/client/react-native";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { Button, CodeBlock } from "paseo-plugin-helper/client";
@@ -7,6 +7,7 @@ import type { Root, Element, ElementContent, RootContent } from "hast";
 import { textContent, externalLink, type AlertType } from "../shared/document";
 import { DocumentImage, Graphic } from "./media";
 import { Mermaid } from "./mermaid/viewer";
+import { useLinkOpener } from "./links";
 import { type ReviewBindings, sourceRange } from "./review-bindings";
 import { reviewTargets } from "../shared/review-targets";
 import { tableColumnWidths } from "../shared/table";
@@ -45,6 +46,7 @@ export function Markdown({
   onNavigate?: (offset: number) => void;
 }) {
   const root = useRef<View>(null);
+  const openExternal = useLinkOpener();
   const anchors = useRef(new Map<string, View | Text>());
   const [width, setWidth] = useState(600);
   const [expanded, setExpanded] = useState(new Map<Element, boolean>());
@@ -143,7 +145,7 @@ export function Markdown({
     } else {
       const url = externalLink(href);
       if (url)
-        void Linking.openURL(url).catch(() =>
+        void openExternal(url).catch(() =>
           onError("Unable to open the link"),
         );
     }
