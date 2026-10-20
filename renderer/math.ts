@@ -8,14 +8,14 @@ import "@mathjax/src/js/input/tex/newcommand/NewcommandConfiguration.js";
 import "@mathjax/src/js/input/tex/boldsymbol/BoldsymbolConfiguration.js";
 import "@mathjax/src/js/input/tex/mathtools/MathtoolsConfiguration.js";
 import "@mathjax/src/js/input/tex/cancel/CancelConfiguration.js";
-import type { GraphicInput } from "../shared/media";
+import type { MathInput } from "../shared/media";
 
 import { MathJaxTexFont } from "@mathjax/mathjax-tex-font/js/svg.js";
 import "@mathjax/src/js/input/tex/base/BaseConfiguration.js";
 
 const adaptor = liteAdaptor();
 RegisterHTMLHandler(adaptor);
-export function mathSvg(input: GraphicInput): string {
+export function mathSvg(input: MathInput): string {
   // Each expression owns its macros, labels and equation counters.
   const tex = new TeX({
     packages: [

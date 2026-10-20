@@ -99,6 +99,16 @@ console.log(content);
 
 ![ワークスペース内の画像](sample.png)
 
+![ワークスペース内のSVG](sample.svg)
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="120">
+  <rect x="1" y="1" width="358" height="118" rx="12" fill="#e8f1ff" stroke="#3366aa" stroke-width="2"/>
+  <circle cx="60" cy="60" r="32" fill="#3366aa"/>
+  <text x="110" y="70" font-family="sans-serif" font-size="24" fill="#1a2b44">SVG コードブロック</text>
+</svg>
+```
+
 <details>
 <summary>詳細な根拠</summary>
 

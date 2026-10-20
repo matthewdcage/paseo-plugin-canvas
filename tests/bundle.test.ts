@@ -111,6 +111,16 @@ test("Paseo compiler bundles both entries; server bundle starts, injects MCP and
       png: true,
     });
     expect(graphic.width).toBeGreaterThan(20);
+    // resvg runs on a worker evaluated from inside the bundle.
+    const svgReply = once(child, "message");
+    child.send("svg");
+    const [svg] = await svgReply;
+    expect(svg, JSON.stringify(svg)).toEqual({
+      type: "svg",
+      width: 120,
+      height: 40,
+      png: true,
+    });
     const originalConfig = message.config;
     for (const crash of [false, true]) {
       await client.close();

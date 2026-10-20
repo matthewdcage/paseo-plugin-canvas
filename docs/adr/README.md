@@ -13,3 +13,4 @@
 * [13. Allow user canvas editing with shared leases and explicit save completion](0013-allow-user-canvas-editing-with-shared-leases-and-explicit-save-completion.md)
 * [14. Distribute the plugin on npm and publish merged version bumps with trusted publishing](0014-distribute-the-plugin-on-npm-and-publish-merged-version-bumps-with-trusted-publishing.md)
 * [15. Require Paseo 0.12 for full-page canvases, a sidebar entry, host settings and closed-agent lease release](0015-require-paseo-0-12-for-full-page-canvases-a-sidebar-entry-host-settings-and-closed-agent-lease-release.md)
+* [16. Rasterize SVG on a daemon worker and retry unrenderable remote images from the viewing device](0016-rasterize-svg-on-a-daemon-worker-and-retry-unrenderable-remote-images-from-the-viewing-device.md)

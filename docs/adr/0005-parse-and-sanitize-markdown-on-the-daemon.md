@@ -10,6 +10,8 @@ links:
   kind: relatesto
 - target: 9
   kind: amendedby
+- target: 16
+  kind: amendedby
 ---
 
 # Parse and sanitize Markdown on the daemon

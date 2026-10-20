@@ -76,3 +76,18 @@ await writeFile(
     chunk("IEND", Buffer.alloc(0)),
   ]),
 );
+await writeFile(
+  ".test-output/visual/sample.svg",
+  `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1">
+      <stop offset="0" stop-color="#4a8f6a"/>
+      <stop offset="1" stop-color="#a8d5ba"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="120" rx="16" fill="url(#g)"/>
+  <path d="M40 90 L100 30 L160 70 L220 40 L280 80" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+</svg>
+`,
+);
