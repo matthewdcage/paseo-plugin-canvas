@@ -108,8 +108,13 @@ export default function contribute(server: PluginServerContext) {
     return retryDispatch(store.reviews, sessions, context.paseo, input);
   });
   server.before("agent.create", async ({ request }) => {
-    if (request.config.mcpServers?.["paseo-canvas"])
-      throw new Error("MCP name paseo-canvas is already configured");
+    // Dedupe by name: this plugin owns the "paseo-canvas" MCP namespace and is
+    // authoritative for it. An incoming config may already carry a "paseo-canvas"
+    // entry (e.g. a schedule that captured one with a stale bearer token at
+    // creation time). The live entry injected below — fresh mcp.url plus a
+    // per-agent session token from sessions.register() — must win, so overwrite
+    // it instead of rejecting the create. The mcpServers spread below already
+    // overwrites this key, so we only drop the throw.
     if (request.env?.[REGISTRATION_ENV] !== undefined)
       throw new Error("Environment name PASEO_CANVAS_REGISTRATION is reserved");
     const { mcp, sessions } = await ready;
